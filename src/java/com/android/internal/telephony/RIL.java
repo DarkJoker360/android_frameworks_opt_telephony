@@ -6656,6 +6656,96 @@ public class RIL extends BaseCommands implements CommandsInterface {
     }
 
     /**
+     * Huawei signal strength hack
+     */
+    static SignalStrength SignalStrengthHuawei(SignalStrength signalStrength) {
+	  int gsmSignalStrength = signalStrength.getGsmLevel();
+        int gsmBitErrorRate = signalStrength.getGsmBitErrorRate();
+        int mWcdmaRscp = 0;
+        int mWcdmaEcio = 0;
+        int cdmaDbm = signalStrength.getDbm();
+        int cdmaEcio = signalStrength.getEvdoEcio();
+        int evdoDbm = signalStrength.getEvdoDbm();
+        int evdoEcio = signalStrength.getEvdoEcio();
+        int evdoSnr = signalStrength.getEvdoSnr();
+        int lteSignalStrength = signalStrength.getLteSignalStrength();
+        int lteRsrp = signalStrength.getLteRsrp();
+        int lteRsrq = signalStrength.getLteRsrq();
+        int lteRssnr = signalStrength.getLteRssnr();
+        int lteCqi = signalStrength.getLteCqi();
+        int mGsm = 0;
+        int mRat = 0;
+        int timingAdvance = signalStrength.getTimestampMillis();
+
+        if (lteRsrp != 0) { // LTE
+            if (lteRsrp > -20) lteSignalStrength = 64; // None or Unknown
+            else if (lteRsrp >= -97) lteSignalStrength = 63; // Great
+            else if (lteRsrp >= -105) lteSignalStrength = 11; // Good
+            else if (lteRsrp >= -113) lteSignalStrength = 7; // Moderate
+            else if (lteRsrp >= -120) lteSignalStrength = 4; // Poor
+            else if (lteRsrp >= -140) lteSignalStrength = 64; // None or Unknown
+        } else if (gsmSignalStrength == 0 && lteRsrp == 0) { // 3G
+            lteRsrp = (mWcdmaRscp & 0xFF) - 256;
+            lteRsrq = (mWcdmaEcio & 0xFF) - 256;
+            if (lteRsrp > -20) { // None or Unknown
+                lteSignalStrength = 64;
+                lteRssnr = -200;
+            } else if (lteRsrp >= -85) { // Great
+                lteSignalStrength = 63;
+                lteRssnr = 300;
+            } else if (lteRsrp >= -95) { // Good
+                lteSignalStrength = 11;
+                lteRssnr = 129;
+            } else if (lteRsrp >= -105) { // Moderate
+                lteSignalStrength = 7;
+                lteRssnr = 44;
+            } else if (lteRsrp >= -115) { // Poor
+                lteSignalStrength = 4;
+                lteRssnr = 9;
+            } else if (lteRsrp >= -140) { // None or Unknown
+                lteSignalStrength = 64;
+                lteRssnr = -200;
+            }
+        } else if (mWcdmaRscp == 0 && lteRsrp == 0) { // 2G
+            lteRsrp = (gsmSignalStrength & 0xFF) - 256;
+            if (lteRsrp > -20) { // None or Unknown
+                lteSignalStrength = 64;
+                lteRsrq = -21;
+                lteRssnr = -200;
+            } else if (lteRsrp >= -85) { // Great
+                lteSignalStrength = 63;
+                lteRsrq = -3;
+                lteRssnr = 300;
+            } else if (lteRsrp >= -95) { // Good
+                lteSignalStrength = 11;
+                lteRsrq = -7;
+                lteRssnr = 129;
+            } else if (lteRsrp >= -105) { // Moderate
+                lteSignalStrength = 7;
+                lteRsrq = -12;
+                lteRssnr = 44;
+            } else if (lteRsrp >= -115) { // Poor
+                lteSignalStrength = 4;
+                lteRsrq = -17;
+                lteRssnr = 9;
+            } else if (lteRsrp >= -140) { // None or Unknown
+                lteSignalStrength = 64;
+                lteRsrq = -21;
+                lteRssnr = -200;
+            }
+        }
+
+        return new SignalStrength(new CellSignalStrengthCdma(cdmaDbm, cdmaEcio, evdoDbm, evdoEcio, evdoSnr),
+                                  new CellSignalStrengthWcdma(gsmSignalStrength, gsmBitErrorRate, mWcdmaRscp,
+                                                              CellInfo.UNAVAILABLE),
+                                  new CellSignalStrengthTdscdma(gsmSignalStrength,gsmBitErrorRate, mWcdmaRscp),
+                                  new CellSignalStrengthLte(lteSignalStrength, lteRsrp, lteRsrq, lteRssnr,
+                                                            lteCqi, timingAdvance),
+                                  new CellSignalStrengthNr()
+                                  );
+    }
+
+    /**
      * Fixup for SignalStrength 1.0 to Assume GSM to WCDMA when
      * The current RAT type is one of the UMTS RATs.
      * @param signalStrength the initial signal strength
@@ -6664,6 +6754,12 @@ public class RIL extends BaseCommands implements CommandsInterface {
     public SignalStrength fixupSignalStrength10(SignalStrength signalStrength) {
         List<CellSignalStrengthGsm> gsmList = signalStrength.getCellSignalStrengths(
                 CellSignalStrengthGsm.class);
+
+        // Huawei signal strength
+        String method = android.os.SystemProperties.get("persist.sys.signal.level", "default");
+        if("openkirin".equals(method))
+            return SignalStrengthHuawei(signalStrength);
+
         // If GSM is not the primary type, then bail out; no fixup needed.
         if (gsmList.isEmpty() || !gsmList.get(0).isValid()) {
             return signalStrength;
